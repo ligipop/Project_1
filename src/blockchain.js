@@ -38,7 +38,6 @@ class Blockchain {
         if( self.height === -1){
             let block = new BlockClass.Block({data: 'Genesis Block'});
             await self._addBlock(block);
-            console.log(self.chain);
         }
     }
 
@@ -68,17 +67,26 @@ class Blockchain {
         return new Promise(async (resolve, reject) => {
             self.height = self.chain.length;
             block.height = self.chain.length;
+            
            block.time = new Date().getTime().toString().slice(0.-3);
+           block.hash = SHA256(JSON.stringify(block)).toString();
            if(block.height > 0){
                 block.previousBlockHash = self.chain[self.chain.length - 1].hash;
            }
-           block.hash = SHA256(JSON.stringify(block)).toString();
-
-           if(block.hash !== null || block.height === self.chain.length || block.time !== 0){
+        
+           // console.log(`chain validated. typeof chainValidationErrors is: ${JSON.stringify(chainValidationErrors)}`);
+            if(block.hash !== null && block.height === self.chain.length && block.time !== 0){
                 resolve(self.chain.push(block));
-           }else{
-                reject('Error during block creation');
-           }
+                console.log(self.chain);
+
+                let chainValidationErrors = await self.validateChain();
+                if(chainValidationErrors && chainValidationErrors.length === 0){
+                console.log("chain validated");
+                }
+
+            }else{
+                reject('error during block creation');
+            }
            
         });
     }
@@ -129,20 +137,22 @@ class Blockchain {
             let timeOfMessageSent = parseInt(message.split(':')[1]);
             let currentTime = parseInt(new Date().getTime().toString().slice(0,-3));
             let timeElapsed = currentTime-timeOfMessageSent;
+            let verifiedMessage = await bitcoinMessage.verify(message,address,signature);
 
-            if(timeElapsed < 5 * 60 * 1000){
-                let verifiedMess = await bitcoinMessage.verify(message, address, signature);
-                let starInfo = 
-                {
-                    "address":address,
-                    "star":star
-                };
+            if(timeElapsed < 300){
 
-                if(verifiedMess){
-                    resolve(self._addBlock(new BlockClass.Block(starInfo)));
-                    console.log(self.chain);
-                }else{
-                    reject("unable to verify")
+                try{
+                    if(verifiedMessage){
+                        let starInfo = 
+                        {
+                            "address":address,
+                            "star":star
+                        };
+                        resolve(self._addBlock(new BlockClass.Block(starInfo)));
+                    }
+
+                }catch{
+                    reject("unable to verify message");
                 }
 
             }else{
@@ -201,17 +211,15 @@ class Blockchain {
         let stars = [];
         return new Promise((resolve, reject) => {
 
-            stars = self.chain.map(async(entry)=>{
+            stars = self.chain.map(function(entry){
                 
-                let returnedObj = await entry.getBData();
+                let returnedObj = entry.getBData();
                 if(returnedObj.address === address){
                     return returnedObj;
-                }else{
-                    console.log("no object returned");
-                }     
+                }    
             });
             
-            if(stars.length > 0){
+            if(stars){
                 resolve(stars);
             }else{
                 reject('Stars not found');
@@ -227,19 +235,45 @@ class Blockchain {
      */
     validateChain() {
         let self = this;
-        let errorLog = [];
-        return new Promise(async (resolve, reject) => {
-            await self._addBlock();
+        
+        return new Promise(function (resolve, reject) {   
+            
+            let previousBlock = null;
+            let previousBlockHashSame = null;
+            let errorLog = [];
+            let validBlock = false;
 
+           
 
-            self.chain.map(function(block){
-                block.validate().catch(function(){
-                    errorLog.push("Block with height ${block.height} could not be validated.");
+            if(self.chain.length > 0){
+                self.chain.forEach(async function(block){
+
+                    if(block.height === 0){
+                        
+                        previousBlockHashSame = true;
+                    }else{
+                        previousBlock = self.chain[block.height-1];
+                        previousBlockHashSame = block.previousBlockHash === previousBlock.hash;
+                    }
+                             
+                        
+                     try{
+                        validBlock = await block.validate();
+                     }catch{
+                        console.log("this block is not validated");
+                     }           
+                        
+                    if(!validBlock || !previousBlockHashSame){
+                            
+                        errorLog.push(`Block with height number: ${block.height} could not be validated.`);
+                    }
                 });
-            });
-
-            resolve(errorLog);
-
+                resolve(errorLog);
+           
+            }else{
+                resolve(errorLog);
+            }      
+                      
         });
     }
 

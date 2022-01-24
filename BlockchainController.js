@@ -16,6 +16,7 @@ class BlockchainController {
         this.submitStar();
         this.getBlockByHash();
         this.getStarsByOwner();
+        this.validateTheChain();
         
     }
 
@@ -75,6 +76,20 @@ class BlockchainController {
             } else {
                 return res.status(500).send("Check the Body Parameter!");
             }
+        });
+    }
+
+    // Endpoint to validate the entire chain everytime a block is added
+    validateTheChain() {
+        this.app.get("/validateTheChain", async (req, res) => {
+            
+                
+                let validatedChain = await this.blockchain.validateChain();
+                if(validatedChain){
+                    return res.status(200).send("chain valid");
+                } else {
+                    return res.status(404).send("chain cannot be validated!");
+                }      
         });
     }
 
